@@ -1,14 +1,32 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Google Services plugin
+        classpath 'com.google.gms:google-services:4.4.2' // This is fine
+    }
+}
+
 plugins {
-    id "com.android.application"
-    id "kotlin-android"
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id "dev.flutter.flutter-gradle-plugin"
+    id "com.android.application" // This is fine
+    id "kotlin-android" // This is fine
+    id "dev.flutter.flutter-gradle-plugin" // This is fine
+    id "com.google.gms.google-services" // Moved from buildscript to plugins
 }
 
 android {
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.permitpro"
+        minSdk = 21
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
     namespace = "com.example.permitpro"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -19,24 +37,19 @@ android {
         jvmTarget = JavaVersion.VERSION_1_8
     }
 
-    defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.permitpro"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-    }
-
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            minifyEnabled true  // Enabled for code shrinking
+            shrinkResources true  // Enable resource shrinking
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig signingConfigs.debug // This is fine
         }
     }
+}
+
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:33.4.0') // Ensure this is at the top
+    implementation 'com.google.firebase:firebase-analytics-ktx' // Move this below the platform dependency
 }
 
 flutter {

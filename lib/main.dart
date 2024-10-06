@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // Import Firebase Core
 import 'hod_profile.dart'; // Make sure to import your HOD Profile page
 import 'student_profile.dart'; // Make sure to import your Student Profile page
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding
+      .ensureInitialized(); // Ensures binding before Firebase initializes
+  await Firebase.initializeApp(); // Initialize Firebase
   runApp(const PermitProApp());
 }
 
@@ -54,7 +58,7 @@ class HomePage extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
                 ),
-                child: const Text('HOD Profile'),
+                child: const Text('HOD Login'),
               ),
             ),
             const SizedBox(height: 20),
@@ -71,7 +75,7 @@ class HomePage extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 15),
                 ),
-                child: const Text('Student Profile'),
+                child: const Text('Student Login'),
               ),
             ),
           ],

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'students_home_page.dart'; // Import the home page
 
 class StudentProfilePage extends StatefulWidget {
   const StudentProfilePage({super.key});
@@ -216,8 +217,25 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   ),
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
+                      String imagePath = _imageFile != null
+                          ? _imageFile!.path
+                          : ''; // Get image path
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Profile Created!')),
+                      );
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (context) {
+                          return StudentsHomePage(
+                            name: name,
+                            phoneNo: phoneNo,
+                            selectedCourse: selectedCourse,
+                            selectedBranch: selectedBranch,
+                            selectedSemester: selectedSemester,
+                            imagePath:
+                                imagePath, // Pass the image path to the home page
+                          );
+                        }),
                       );
                     }
                   },
