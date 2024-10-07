@@ -4,11 +4,11 @@ import 'hod_profile.dart'; // Make sure to import your HOD Profile page
 import 'student_profile.dart'; // Make sure to import your Student Profile page
 
 void main() async {
-  WidgetsFlutterBinding
-      .ensureInitialized(); // Ensures binding before Firebase initializes
+  WidgetsFlutterBinding.ensureInitialized(); // Ensures binding before Firebase initializes
   await Firebase.initializeApp(); // Initialize Firebase
   runApp(const PermitProApp());
 }
+
 
 class PermitProApp extends StatelessWidget {
   const PermitProApp({Key? key}) : super(key: key);
@@ -21,7 +21,7 @@ class PermitProApp extends StatelessWidget {
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const HomePage(),
+      home: const HomePage(), // Main home page with login options
     );
   }
 }
@@ -45,6 +45,7 @@ class HomePage extends StatelessWidget {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 40),
+            // HOD Login Button
             SizedBox(
               width: 200, // Set a fixed width for consistent button size
               child: ElevatedButton(
@@ -52,7 +53,8 @@ class HomePage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => const HODProfilePage()),
+                      builder: (context) => const HODProfilePage(),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
@@ -62,6 +64,7 @@ class HomePage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
+            // Student Login Button
             SizedBox(
               width: 200, // Set a fixed width for consistent button size
               child: ElevatedButton(
@@ -69,7 +72,8 @@ class HomePage extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) => const StudentProfilePage()),
+                      builder: (context) => const StudentProfilePage(),
+                    ),
                   );
                 },
                 style: ElevatedButton.styleFrom(

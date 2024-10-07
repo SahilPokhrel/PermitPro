@@ -71,73 +71,82 @@ class StudentsHomePage extends StatelessWidget {
               'Semester: $selectedSemester',
               style: const TextStyle(fontSize: 16),
             ),
-            const SizedBox(height: 20), // Space before the buttons
+            const SizedBox(height: 20),
 
-            const Spacer(),
+            // Edit Profile Button
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () {
+                    // Navigate to the Edit Profile page
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => StudentProfilePage(
+                          name: name,
+                          phoneNo: phoneNo,
+                          selectedCourse: selectedCourse,
+                          selectedBranch: selectedBranch,
+                          selectedSemester: selectedSemester,
+                          imagePath: imagePath,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Edit Profile',
+                    style: TextStyle(fontSize: 18),
+                  ),
+                ),
+              ),
+            ),
 
             // Requests and Status Buttons
+            const SizedBox(height: 20), // Space before the buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 15,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: () {
-                      // Navigate to the Requests page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const RequestsPage(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Requests',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10), // Space between buttons
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 15,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onPressed: () {
-                      // Navigate to the Status page
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const StatusPage(),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Status',
-                      style: TextStyle(fontSize: 18),
-                    ),
-                  ),
-                ),
+                _buildNavButton(context, 'Requests', RequestsPage()),
+                const SizedBox(width: 10),
+                _buildNavButton(context, 'Status', StatusPage()),
               ],
             ),
             const SizedBox(height: 20),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavButton(BuildContext context, String title, Widget page) {
+    return Expanded(
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.teal,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => page),
+          );
+        },
+        child: Text(
+          title,
+          style: const TextStyle(fontSize: 18),
         ),
       ),
     );

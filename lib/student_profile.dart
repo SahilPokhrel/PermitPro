@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'students_home_page.dart'; // Import the home page
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firebase Firestore
 
 class StudentProfilePage extends StatefulWidget {
   const StudentProfilePage({super.key});
@@ -80,6 +81,25 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     }
   }
 
+  Future<void> saveProfileToFirestore() async {
+    try {
+      String imagePath = _imageFile != null ? _imageFile!.path : '';
+
+      await FirebaseFirestore.instance.collection('student_profiles').add({
+        'name': name,
+        'phoneNo': phoneNo,
+        'selectedCourse': selectedCourse,
+        'selectedBranch': selectedBranch,
+        'selectedSemester': selectedSemester,
+        'imagePath': imagePath,
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving profile: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     List<String> courseBranches = branches[selectedCourse] ?? [];
@@ -112,10 +132,10 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                       backgroundColor: Colors.grey[300],
                       child: _imageFile == null
                           ? const Icon(
-                              Icons.person,
-                              size: 60,
-                              color: Colors.white,
-                            )
+                        Icons.person,
+                        size: 60,
+                        color: Colors.white,
+                      )
                           : null,
                     ),
                     Positioned(
@@ -215,11 +235,9 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     if (_formKey.currentState!.validate()) {
-                      String imagePath = _imageFile != null
-                          ? _imageFile!.path
-                          : ''; // Get image path
+                      await saveProfileToFirestore();
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Profile Created!')),
                       );
@@ -232,8 +250,9 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                             selectedCourse: selectedCourse,
                             selectedBranch: selectedBranch,
                             selectedSemester: selectedSemester,
-                            imagePath:
-                                imagePath, // Pass the image path to the home page
+                            imagePath: _imageFile != null
+                                ? _imageFile!.path
+                                : '', // Pass the image path to the home page
                           );
                         }),
                       );
@@ -267,7 +286,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
           filled: true,
           fillColor: Colors.grey[200],
           contentPadding:
-              const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+          const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
@@ -290,7 +309,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   Widget _buildDropdown({
     required String label,
-    required String? value,
+    String? value,
     required List<String> items,
     required Function(String?) onChanged,
   }) {
@@ -302,23 +321,23 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
           filled: true,
           fillColor: Colors.grey[200],
           contentPadding:
-              const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+          const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
           ),
         ),
         value: value,
-        items: items.map((String item) {
-          return DropdownMenuItem<String>(
-            value: item,
-            child: Text(item),
-          );
-        }).toList(),
+        items: items
+            .map((item) => DropdownMenuItem<String>(
+          value: item,
+          child: Text(item),
+        ))
+            .toList(),
         onChanged: onChanged,
         validator: (value) {
-          if (value == null) {
-            return 'Please select a $label';
+          if (value == null || value.isEmpty) {
+            return 'Please select $label';
           }
           return null;
         },

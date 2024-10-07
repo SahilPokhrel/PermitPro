@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 
 class HODProfilePage extends StatefulWidget {
   const HODProfilePage({super.key});
@@ -59,13 +60,47 @@ class _HODProfilePageState extends State<HODProfilePage> {
       },
     );
 
-    // Check if the source is not null before using it
     if (source != null) {
       final XFile? image = await picker.pickImage(source: source);
       if (image != null) {
         setState(() {
           _imageFile = image;
         });
+      }
+    }
+  }
+
+  Future<void> _createHODProfile() async {
+    if (_formKey.currentState!.validate()) {
+      try {
+        // Create a new HOD profile document in Firestore
+        await FirebaseFirestore.instance.collection('HOD').add({
+          'name': name,
+          'phoneNo': phoneNo,
+          'course': selectedCourse,
+          'branch': selectedBranch,
+          'profileImage': _imageFile?.path, // Store the image path or URL if uploaded
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('HOD Profile Created!')),
+        );
+
+        // Optionally, clear the form or navigate to another page
+        _formKey.currentState!.reset();
+        setState(() {
+          name = '';
+          phoneNo = '';
+          selectedCourse = '';
+          selectedBranch = '';
+          _imageFile = null;
+        });
+      } catch (e) {
+        // Handle errors and notify the user
+        print('Error creating HOD profile: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     }
   }
@@ -100,10 +135,10 @@ class _HODProfilePageState extends State<HODProfilePage> {
                       backgroundColor: Colors.grey[300],
                       child: _imageFile == null
                           ? const Icon(
-                              Icons.person,
-                              size: 60,
-                              color: Colors.white,
-                            )
+                        Icons.person,
+                        size: 60,
+                        color: Colors.white,
+                      )
                           : null,
                     ),
                     Positioned(
@@ -156,7 +191,7 @@ class _HODProfilePageState extends State<HODProfilePage> {
                         onChanged: (value) {
                           setState(() {
                             selectedCourse = value!;
-                            selectedBranch = '';
+                            selectedBranch = ''; // Reset branch when course changes
                           });
                         },
                       ),
@@ -189,13 +224,7 @@ class _HODProfilePageState extends State<HODProfilePage> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Profile Created!')),
-                      );
-                    }
-                  },
+                  onPressed: _createHODProfile, // Call the function to create HOD profile
                   child: const Text(
                     'Create Profile',
                     style: TextStyle(fontSize: 18),
@@ -223,8 +252,7 @@ class _HODProfilePageState extends State<HODProfilePage> {
           hintText: hintText,
           filled: true,
           fillColor: Colors.grey[200],
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+          contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
@@ -258,8 +286,7 @@ class _HODProfilePageState extends State<HODProfilePage> {
           labelText: label,
           filled: true,
           fillColor: Colors.grey[200],
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+          contentPadding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
