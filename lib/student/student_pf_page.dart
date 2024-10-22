@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'student_page.dart'; // Assuming this is your main student page file
 
 class StudentProfilePage extends StatefulWidget {
   @override
@@ -34,13 +35,26 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   void _submitProfile() {
     if (_formKey.currentState!.validate()) {
-      // Submit the profile details
+      // Pass all necessary data to the StudentPage
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => StudentPage(
+            usn: _usnController.text,
+            course: _selectedCourse!,
+            branch: _selectedBranch!,
+            semester: _selectedSemester!,
+            profileImage: _profileImage,
+          ),
+        ),
+      );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Please fill out all fields')),
       );
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -66,8 +80,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   child: CircleAvatar(
                     radius: 60,
                     backgroundColor: Colors.grey[200],
-                    backgroundImage:
-                    _profileImage != null ? FileImage(_profileImage!) : null,
+                    backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
                     child: _profileImage == null
                         ? Icon(Icons.camera_alt, size: 50, color: Colors.grey)
                         : null,
