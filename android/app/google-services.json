@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "164114031277",
+    "project_id": "permit-pro-v01",
+    "storage_bucket": "permit-pro-v01.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:164114031277:android:1b4aa5d1def684458f9c24",
+        "android_client_info": {
+          "package_name": "com.example.permitpro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARs_68oClvMIPxLO8R8PXq8EUOYTQmYMM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
