@@ -1,17 +1,21 @@
+// lib/screens/change_password_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ for Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'student_profile_screen.dart';
+import 'admin_profile_screen.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   static const route = '/change-password';
 
-  final String collegeName; // ✅ pass from login screen
+  final String collegeName; // passed from login screen
   final String rollNo;
+  final String role; // passed from login so we know where to route after change
 
   const ChangePasswordScreen({
     super.key,
     required this.collegeName,
     required this.rollNo,
+    required this.role,
   });
 
   @override
@@ -43,47 +47,55 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     });
 
     try {
-      // 🔥 Update the user in Firestore
-      final query = await FirebaseFirestore.instance
+      // Use document ID = rollNo (consistent with login flow)
+      final docRef = FirebaseFirestore.instance
           .collection("Colleges")
           .doc(widget.collegeName)
           .collection("Users")
-          .where("rollNo", isEqualTo: widget.rollNo)
-          .limit(1)
-          .get();
+          .doc(widget.rollNo);
 
-      if (query.docs.isNotEmpty) {
-        final docId = query.docs.first.id;
+      final docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        setState(() {
+          _error = "User not found.";
+          _loading = false;
+        });
+        return;
+      }
 
-        await FirebaseFirestore.instance
-            .collection("Colleges")
-            .doc(widget.collegeName)
-            .collection("Users")
-            .doc(docId)
-            .update({
-              "password": _newCtrl.text.trim(),
-              "isPasswordChanged": true,
-            });
+      await docRef.update({
+        "password": _newCtrl.text.trim(),
+        "isPasswordChanged": true,
+      });
 
-        // ✅ Redirect to Student Profile
+      // Redirect to proper profile creation screen (with required args)
+      if (widget.role.toLowerCase() == 'admin') {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          AdminProfileScreen.route,
+          (route) => false,
+          arguments: {
+            'collegeName': widget.collegeName,
+            'rollNo': widget.rollNo,
+          },
+        );
+      } else {
         Navigator.pushNamedAndRemoveUntil(
           context,
           StudentProfileScreen.route,
-          (_) => false,
+          (route) => false,
+          arguments: {
+            'collegeName': widget.collegeName,
+            'rollNo': widget.rollNo,
+          },
         );
-      } else {
-        setState(() {
-          _error = "User not found.";
-        });
       }
     } catch (e) {
       setState(() {
         _error = "Failed to update password: $e";
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -104,7 +116,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 24),
-
               TextFormField(
                 controller: _newCtrl,
                 obscureText: _obscureNew,
@@ -112,9 +123,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   labelText: 'New Password',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureNew ? Icons.visibility : Icons.visibility_off,
-                    ),
+                    icon: Icon(_obscureNew ? Icons.visibility : Icons.visibility_off),
                     onPressed: () => setState(() => _obscureNew = !_obscureNew),
                   ),
                 ),
@@ -124,9 +133,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   return null;
                 },
               ),
-
               const SizedBox(height: 16),
-
               TextFormField(
                 controller: _confirmCtrl,
                 obscureText: _obscureConfirm,
@@ -134,11 +141,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   labelText: 'Confirm New Password',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConfirm ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () =>
-                        setState(() => _obscureConfirm = !_obscureConfirm),
+                    icon: Icon(_obscureConfirm ? Icons.visibility : Icons.visibility_off),
+                    onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                   ),
                 ),
                 validator: (v) {
@@ -147,13 +151,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   return null;
                 },
               ),
-
               const SizedBox(height: 24),
-
-              if (_error != null)
-                Text(_error!, style: const TextStyle(color: Colors.red)),
+              if (_error != null) Text(_error!, style: const TextStyle(color: Colors.red)),
               if (_loading) const Center(child: CircularProgressIndicator()),
-
               ElevatedButton(
                 onPressed: _loading ? null : _submit,
                 child: const Text('Reset'),

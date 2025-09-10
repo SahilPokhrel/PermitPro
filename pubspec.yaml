@@ -20,6 +20,8 @@ dependencies:
   firebase_storage: ^12.2.0
   image_picker: ^1.0.7
   supabase_flutter: ^2.5.3
+  shared_preferences: ^2.5.3
+  photo_view: ^0.15.0
   # firebase_messaging: ^15.0.3   # uncomment later when you add push
 
 dev_dependencies:

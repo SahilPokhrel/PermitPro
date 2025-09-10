@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   static const route = '/student-dashboard';
@@ -9,20 +11,21 @@ class StudentDashboardScreen extends StatefulWidget {
 }
 
 class _WelcomeBlock extends StatelessWidget {
-  const _WelcomeBlock();
+  final String name;
+  const _WelcomeBlock({required this.name});
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
-      key: ValueKey('welcome-expanded'),
+    return Column(
+      key: const ValueKey('welcome-expanded'),
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          'Welcome back,\nName Placeholder',
+          'Welcome back,\n$name',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
+          style: const TextStyle(
             color: Colors.white,
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -36,6 +39,58 @@ class _WelcomeBlock extends StatelessWidget {
 
 class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   bool _collapsed = false;
+  String _userName = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserName();
+  }
+
+  Future<void> _fetchUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    final collegeName = prefs.getString('collegeName');
+    final rollNo = prefs.getString('rollNo');
+
+    if (collegeName != null && rollNo != null) {
+      final snap = await FirebaseFirestore.instance
+          .collection("Colleges")
+          .doc(collegeName)
+          .collection("Users")
+          .doc(rollNo)
+          .get();
+
+      if (snap.exists) {
+        setState(() {
+          _userName = snap.data()?['name'] ?? 'Student';
+        });
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Logout"),
+        content: const Text("Are you sure you want to quit the application?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes")),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('collegeName');
+      await prefs.remove('rollNo');
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -46,47 +101,49 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         headerSliverBuilder: (context, inner) => [
           SliverAppBar(
             pinned: true,
-            floating: false,
-            stretch: false,
-            automaticallyImplyLeading: false,
             backgroundColor: Colors.transparent,
             elevation: 0,
             expandedHeight: 200,
-            collapsedHeight: 72, // a bit taller to avoid tight fits
+            collapsedHeight: 72,
             centerTitle: true,
 
-            // Center title only when collapsed
             title: AnimatedOpacity(
               opacity: _collapsed ? 1 : 0,
               duration: const Duration(milliseconds: 180),
               child: const Text(
                 'Home',
-                style: TextStyle(
-                  color: Colors.white, // title in white
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
               ),
             ),
 
-            // Make action icons white always
             actionsIconTheme: const IconThemeData(color: Colors.white),
             actions: [
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_none),
-              ),
-              IconButton(
-                onPressed: () {},
+              IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
+              PopupMenuButton<String>(
                 icon: const Icon(Icons.settings_outlined),
+                onSelected: (value) {
+                  if (value == 'logout') _logout();
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text("Logout"),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
 
             flexibleSpace: LayoutBuilder(
               builder: (context, constraints) {
                 final h = constraints.maxHeight;
-
-                // detect collapsed state (tweak threshold)
                 final isCollapsed = h <= (kToolbarHeight + 28);
+
                 if (isCollapsed != _collapsed && mounted) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted) setState(() => _collapsed = isCollapsed);
@@ -109,26 +166,19 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     child: SafeArea(
                       bottom: false,
                       child: AnimatedOpacity(
-                        // hide big block as we collapse to avoid overflow
                         opacity: _collapsed ? 0 : 1,
                         duration: const Duration(milliseconds: 160),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: const [
-                              CircleAvatar(
-                                radius: 24, // slightly smaller
+                            children: [
+                              const CircleAvatar(
+                                radius: 24,
                                 backgroundColor: Colors.white,
-                                child: Icon(
-                                  Icons.person,
-                                  size: 28,
-                                  color: Colors.black54,
-                                ),
+                                child: Icon(Icons.person, size: 28, color: Colors.black54),
                               ),
-                              SizedBox(width: 12),
-                              // Welcome block; will be hidden on collapse
-                              Expanded(child: _WelcomeBlock()),
+                              const SizedBox(width: 12),
+                              Expanded(child: _WelcomeBlock(name: _userName)),
                             ],
                           ),
                         ),
@@ -143,26 +193,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         body: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            // Dashboard + Leave History
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  "Dashboard",
-                  style: theme.textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                Text("Dashboard", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
                 OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    shape: const StadiumBorder(),
-                    side: BorderSide(color: Colors.blue.shade300),
-                  ),
                   onPressed: () {},
+                  style: OutlinedButton.styleFrom(shape: const StadiumBorder(), side: BorderSide(color: Colors.blue.shade300)),
                   child: const Text("Leave History"),
                 ),
               ],
@@ -170,47 +207,22 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
             const SizedBox(height: 12),
 
-            // Stat cards (won't overflow)
             Row(
               children: const [
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.wb_sunny_outlined,
-                    label: 'Half Day',
-                    value: '07',
-                  ),
-                ),
+                Expanded(child: _StatCard(icon: Icons.wb_sunny_outlined, label: 'Half Day', value: '07')),
                 SizedBox(width: 8),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.medical_services_outlined,
-                    label: 'Medical',
-                    value: '10',
-                  ),
-                ),
+                Expanded(child: _StatCard(icon: Icons.medical_services_outlined, label: 'Medical', value: '10')),
                 SizedBox(width: 8),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.calendar_today_outlined,
-                    label: 'Full Day',
-                    value: '05',
-                  ),
-                ),
+                Expanded(child: _StatCard(icon: Icons.calendar_today_outlined, label: 'Full Day', value: '05')),
               ],
             ),
 
             const SizedBox(height: 20),
 
-            // Past leaves header
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  "Your Past Leaves",
-                  style: theme.textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                Text("Your Past Leaves", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
                 TextButton(onPressed: () {}, child: const Text("See more ›")),
               ],
             ),
@@ -247,11 +259,7 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _StatCard({required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -263,29 +271,9 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.black54, size: 20),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow.ellipsis, // 👈 prevents wrap "Medica\nl"
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            Row(children: [Icon(icon, color: Colors.black54, size: 20), const SizedBox(width: 6), Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))]),
             const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
-            ),
+            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
           ],
         ),
       ),
@@ -300,13 +288,7 @@ class _LeaveCard extends StatelessWidget {
   final Color color;
   final Color iconColor;
 
-  const _LeaveCard({
-    required this.title,
-    required this.subtitle,
-    required this.note,
-    required this.color,
-    required this.iconColor,
-  });
+  const _LeaveCard({required this.title, required this.subtitle, required this.note, required this.color, required this.iconColor});
 
   @override
   Widget build(BuildContext context) {
@@ -317,10 +299,7 @@ class _LeaveCard extends StatelessWidget {
         leading: Container(
           height: 40,
           width: 40,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(12),
-          ),
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
           child: Icon(Icons.event_note_outlined, color: iconColor),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -346,12 +325,11 @@ class _BottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return NavigationBar(
-      selectedIndex:
-          0, // 👈 for Home screen. Change this dynamically per screen
+      selectedIndex: 0,
       onDestinationSelected: (i) {
         switch (i) {
           case 0:
-            Navigator.pushReplacementNamed(context, '/student-dashboard');
+            Navigator.pushReplacementNamed(context, StudentDashboardScreen.route);
             break;
           case 1:
             Navigator.pushReplacementNamed(context, '/apply-leave');
@@ -362,21 +340,9 @@ class _BottomNav extends StatelessWidget {
         }
       },
       destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.add_circle_outline),
-          selectedIcon: Icon(Icons.add_circle),
-          label: 'Apply Leave',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.history_outlined),
-          selectedIcon: Icon(Icons.history),
-          label: 'History',
-        ),
+        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+        NavigationDestination(icon: Icon(Icons.add_circle_outline), selectedIcon: Icon(Icons.add_circle), label: 'Apply Leave'),
+        NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
       ],
     );
   }

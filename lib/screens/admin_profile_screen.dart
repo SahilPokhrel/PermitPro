@@ -1,45 +1,41 @@
-// lib/screens/student_profile_screen.dart
+// lib/screens/admin_profile_screen.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'student_dashboard_screen.dart';
+import 'admin_dashboard_screen.dart';
 
-class StudentProfileScreen extends StatefulWidget {
-  static const route = '/student-profile';
+class AdminProfileScreen extends StatefulWidget {
+  static const route = '/admin-profile';
   final String collegeName;
   final String rollNo;
 
-  const StudentProfileScreen({
+  const AdminProfileScreen({
     super.key,
     required this.collegeName,
     required this.rollNo,
   });
 
   @override
-  State<StudentProfileScreen> createState() => _StudentProfileScreenState();
+  State<AdminProfileScreen> createState() => _AdminProfileScreenState();
 }
 
-class _StudentProfileScreenState extends State<StudentProfileScreen> {
+class _AdminProfileScreenState extends State<AdminProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
-  final _parentMobileCtrl = TextEditingController();
-  final _addressCtrl = TextEditingController();
-
-  String? _department;
-  String? _semester;
-  String? _batch = '2022 - 26';
 
   File? _pickedImage;
   String? _uploadedUrl;
-
   final ImagePicker _picker = ImagePicker();
 
-  // Departments (from screenshot)
+  String? _department;
+  String? _semester;
+
+  // ✅ Departments
   final List<String> _departments = [
     "Artificial Intelligence and Machine Learning",
     "Bachelor of Business Administration",
@@ -54,7 +50,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     "Nursing",
   ];
 
-  // Map Roman → semX
+  // ✅ Map Roman → semX
   final Map<String, String> _semesterMap = {
     "I": "sem1",
     "II": "sem2",
@@ -70,8 +66,6 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
-    _parentMobileCtrl.dispose();
-    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -86,21 +80,25 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
   Future<void> _uploadToSupabase(File file) async {
     try {
       final supabase = Supabase.instance.client;
-      final path = "${widget.rollNo}/profile.jpg";
+      final path = "${widget.rollNo}/admin_profile.jpg";
 
       await supabase.storage
           .from("profile-photos")
           .upload(path, file, fileOptions: const FileOptions(upsert: true));
 
-      final publicUrl = supabase.storage.from("profile-photos").getPublicUrl(path);
+      final publicUrl = supabase.storage
+          .from("profile-photos")
+          .getPublicUrl(path);
 
-      setState(() {
-        _uploadedUrl = publicUrl;
-      });
+      setState(() => _uploadedUrl = publicUrl);
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Profile photo uploaded")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("✅ Profile photo uploaded")));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
     }
   }
 
@@ -117,35 +115,31 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
       await docRef.set({
         "name": _nameCtrl.text.trim(),
         "mobile": _mobileCtrl.text.trim(),
-        "parentMobile": _parentMobileCtrl.text.trim(),
-        "address": _addressCtrl.text.trim(),
         "department": _department,
         "semester": _semesterMap[_semester] ?? "sem1",
-        "batch": _batch,
         "profileImageUrl": _uploadedUrl,
-        // ← IMPORTANT: mark profile created so first-time flow completes
         "isProfileEdited": true,
       }, SetOptions(merge: true));
 
-      // ensure session persisted (defensive)
+      // save session defensively
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('collegeName', widget.collegeName);
       await prefs.setString('rollNo', widget.rollNo);
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile saved ✅")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Profile saved ✅")));
 
-      // Navigate to student dashboard and pass args
       Navigator.pushNamedAndRemoveUntil(
         context,
-        StudentDashboardScreen.route,
+        AdminDashboardScreen.route,
         (route) => false,
-        arguments: {
-          'collegeName': widget.collegeName,
-          'rollNo': widget.rollNo,
-        },
+        arguments: {"collegeName": widget.collegeName, "rollNo": widget.rollNo},
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Save failed: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Save failed: $e")));
     }
   }
 
@@ -159,7 +153,7 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile'), centerTitle: true),
+      appBar: AppBar(title: const Text('Admin Profile'), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -177,11 +171,18 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                         backgroundColor: const Color(0xFFE5E7EB),
                         backgroundImage: _pickedImage != null
                             ? FileImage(_pickedImage!)
-                            : (_uploadedUrl != null ? NetworkImage(_uploadedUrl!) : null) as ImageProvider<Object>?,
+                            : (_uploadedUrl != null
+                                  ? NetworkImage(_uploadedUrl!)
+                                  : null),
                         child: _pickedImage == null && _uploadedUrl == null
-                            ? const Icon(Icons.person, size: 48, color: Colors.white)
+                            ? const Icon(
+                                Icons.person,
+                                size: 48,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
+
                       Positioned(
                         right: 0,
                         bottom: 0,
@@ -194,7 +195,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                             onTap: _pickImage,
                             child: const Padding(
                               padding: EdgeInsets.all(6),
-                              child: Icon(Icons.edit, size: 16, color: Colors.white),
+                              child: Icon(
+                                Icons.edit,
+                                size: 16,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -211,7 +216,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   controller: _nameCtrl,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(hintText: 'Full Name'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter name' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Enter name' : null,
                 ),
                 divider,
 
@@ -234,96 +240,39 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                 ),
                 divider,
 
-                // Department
+                // Department dropdown
                 Text('Department', style: labelStyle),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
                   value: _department,
-                  items: _departments.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  items: _departments
+                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .toList(),
                   onChanged: (v) => setState(() => _department = v),
-                  decoration: const InputDecoration(hintText: 'Select department'),
-                  validator: (v) => v == null ? 'Please select department' : null,
-                ),
-                divider,
-
-                // Semester + Batch
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Semester', style: labelStyle),
-                          const SizedBox(height: 6),
-                          DropdownButtonFormField<String>(
-                            value: _semester,
-                            items: _semesterMap.keys
-                                .map((roman) => DropdownMenuItem(value: roman, child: Text(roman)))
-                                .toList(),
-                            onChanged: (v) => setState(() => _semester = v),
-                            decoration: const InputDecoration(hintText: 'Semester'),
-                            validator: (v) => v == null ? 'Please select semester' : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Batch', style: labelStyle),
-                          const SizedBox(height: 6),
-                          DropdownButtonFormField<String>(
-                            value: _batch,
-                            items: const [
-                              DropdownMenuItem(value: '2021 - 25', child: Text('2021 - 25')),
-                              DropdownMenuItem(value: '2022 - 26', child: Text('2022 - 26')),
-                              DropdownMenuItem(value: '2023 - 27', child: Text('2023 - 27')),
-                              DropdownMenuItem(value: '2024 - 28', child: Text('2024 - 28')),
-                              DropdownMenuItem(value: '2025 - 29', child: Text('2025 - 29')),
-                            ],
-                            onChanged: (v) => setState(() => _batch = v),
-                            decoration: const InputDecoration(hintText: '20XX - XX'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                divider,
-
-                // Parent's Mobile
-                Text("Parent's Mobile", style: labelStyle),
-                const SizedBox(height: 6),
-                TextFormField(
-                  controller: _parentMobileCtrl,
-                  keyboardType: TextInputType.phone,
                   decoration: const InputDecoration(
-                    hintText: '98490XXXXX',
-                    suffixIcon: Icon(Icons.phone_outlined),
+                    hintText: 'Select department',
                   ),
-                  validator: (v) {
-                    final s = v?.trim() ?? '';
-                    if (s.isEmpty) return 'Enter parent mobile number';
-                    if (s.length != 10) return 'Enter valid number';
-                    return null;
-                  },
+                  validator: (v) =>
+                      v == null ? 'Please select department' : null,
                 ),
                 divider,
 
-                // Address
-                Text('Address', style: labelStyle),
+                // Semester dropdown
+                Text('Semester', style: labelStyle),
                 const SizedBox(height: 6),
-                TextFormField(
-                  controller: _addressCtrl,
-                  minLines: 2,
-                  maxLines: 4,
+                DropdownButtonFormField<String>(
+                  value: _semester,
+                  items: _semesterMap.keys
+                      .map(
+                        (roman) =>
+                            DropdownMenuItem(value: roman, child: Text(roman)),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _semester = v),
                   decoration: const InputDecoration(
-                    hintText: 'Your address',
-                    alignLabelWithHint: true,
+                    hintText: 'Select semester',
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter address' : null,
+                  validator: (v) => v == null ? 'Please select semester' : null,
                 ),
                 const SizedBox(height: 22),
 

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 
 class AuthService {
   final _db = FirebaseFirestore.instance;
@@ -26,7 +27,7 @@ class AuthService {
         return null; // user not found
       }
     } catch (e) {
-      print("❌ Firestore validation error: $e");
+      debugPrint("❌ Firestore validation error: $e");
       return null;
     }
   }
