@@ -75,15 +75,24 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
     super.dispose();
   }
 
+  /// Pick image (only preview, not upload yet)
   Future<void> _pickImage() async {
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
-      setState(() => _pickedImage = File(picked.path));
-      await _uploadToSupabase(File(picked.path));
+      setState(() {
+        _pickedImage = File(picked.path);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("📸 Profile image selected. Don't forget to Save!"),
+        ),
+      );
     }
   }
 
-  Future<void> _uploadToSupabase(File file) async {
+  /// Upload selected file to Supabase bucket
+  Future<String?> _uploadToSupabase(File file) async {
     try {
       final supabase = Supabase.instance.client;
       final path = "${widget.rollNo}/profile.jpg";
@@ -92,60 +101,148 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
           .from("profile-photos")
           .upload(path, file, fileOptions: const FileOptions(upsert: true));
 
-      final publicUrl = supabase.storage.from("profile-photos").getPublicUrl(path);
+      final publicUrl = supabase.storage
+          .from("profile-photos")
+          .getPublicUrl(path);
 
-      setState(() {
-        _uploadedUrl = publicUrl;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Profile photo uploaded")));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      return publicUrl;
+    } catch (e, st) {
+      print("❌ [Supabase] Upload failed: $e");
+      print(st);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Upload failed: $e")));
+      return null;
     }
   }
 
+  /// Save profile data
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      print("⚠️ [Save] Form not valid, aborting save");
+      return;
+    }
+
+    if (_department == null || _semester == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Please select Department and Semester"),
+        ),
+      );
+      print(
+        "❌ [Save] Department or Semester is null → dept=$_department | sem=$_semester",
+      );
+      return;
+    }
 
     try {
-      final docRef = FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final prefs = await SharedPreferences.getInstance();
+      final String department = _department!;
+      final String semesterKey = _semesterMap[_semester]!;
+      final String rollNo = widget.rollNo;
+
+      print("📌 [Save] dept=$department | sem=$semesterKey | rollNo=$rollNo");
+
+      // 1️⃣ Fetch role from Users collection
+      final usersRef = firestore
           .collection("Colleges")
           .doc(widget.collegeName)
           .collection("Users")
-          .doc(widget.rollNo);
+          .doc(rollNo);
 
-      await docRef.set({
+      final userSnap = await usersRef.get();
+      if (!userSnap.exists) {
+        throw Exception("User $rollNo not found in Users collection!");
+      }
+
+      final role = userSnap.data()?['role'] ?? "Student";
+
+      // 2️⃣ Upload image if picked
+      String? uploadedUrl = _uploadedUrl;
+      if (_pickedImage != null) {
+        uploadedUrl = await _uploadToSupabase(_pickedImage!);
+      }
+
+      // 3️⃣ Update Users collection (booleans + minimal info)
+      await usersRef.set({
+        "isProfileEdited": true,
+        "name": _nameCtrl.text.trim(),
+        "department": department,
+        "semester": semesterKey,
+        "profileImageUrl": uploadedUrl,
+      }, SetOptions(merge: true));
+
+      // 4️⃣ Build correct Firestore path (Admins / Students)
+      CollectionReference targetCollection;
+      if (role == "Admin") {
+        targetCollection = firestore
+            .collection("Colleges")
+            .doc(widget.collegeName)
+            .collection("Departments")
+            .doc(department)
+            .collection("Semesters")
+            .doc(semesterKey)
+            .collection("Admins");
+      } else {
+        targetCollection = firestore
+            .collection("Colleges")
+            .doc(widget.collegeName)
+            .collection("Departments")
+            .doc(department)
+            .collection("Semesters")
+            .doc(semesterKey)
+            .collection("Students");
+      }
+
+      // 5️⃣ Save full profile data
+      await targetCollection.doc(rollNo).set({
+        "rollNo": rollNo,
+        "email": Supabase.instance.client.auth.currentUser?.email ?? "",
         "name": _nameCtrl.text.trim(),
         "mobile": _mobileCtrl.text.trim(),
         "parentMobile": _parentMobileCtrl.text.trim(),
         "address": _addressCtrl.text.trim(),
-        "department": _department,
-        "semester": _semesterMap[_semester] ?? "sem1",
+        "department": department,
+        "semester": semesterKey,
         "batch": _batch,
-        "profileImageUrl": _uploadedUrl,
-        // ← IMPORTANT: mark profile created so first-time flow completes
-        "isProfileEdited": true,
+        "profileImageUrl": uploadedUrl,
+        "halfDay": 0,
+        "medical": 0,
+        "fullDay": 0,
+        "pastLeaves": [],
+        "createdAt": FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // ensure session persisted (defensive)
-      final prefs = await SharedPreferences.getInstance();
+      // 6️⃣ Save locally for dashboard
       await prefs.setString('collegeName', widget.collegeName);
-      await prefs.setString('rollNo', widget.rollNo);
+      await prefs.setString('rollNo', rollNo);
+      await prefs.setString('department', department);
+      await prefs.setString('semester', semesterKey);
+      await prefs.setString('role', role);
+      if (uploadedUrl != null) {
+        await prefs.setString('profileImageUrl', uploadedUrl);
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile saved ✅")));
+      print(
+        "✅ [Save] Saved prefs → college=${widget.collegeName}, rollNo=$rollNo, dept=$department, sem=$semesterKey",
+      );
 
-      // Navigate to student dashboard and pass args
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Profile saved successfully")),
+      );
+
       Navigator.pushNamedAndRemoveUntil(
         context,
         StudentDashboardScreen.route,
         (route) => false,
-        arguments: {
-          'collegeName': widget.collegeName,
-          'rollNo': widget.rollNo,
-        },
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Save failed: $e")));
+    } catch (e, st) {
+      print("❌ [Save] Failed to save profile: $e");
+      print(st);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("❌ Save failed: $e")));
     }
   }
 
@@ -177,9 +274,15 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                         backgroundColor: const Color(0xFFE5E7EB),
                         backgroundImage: _pickedImage != null
                             ? FileImage(_pickedImage!)
-                            : (_uploadedUrl != null ? NetworkImage(_uploadedUrl!) : null) as ImageProvider<Object>?,
+                            : (_uploadedUrl != null
+                                  ? NetworkImage(_uploadedUrl!)
+                                  : null),
                         child: _pickedImage == null && _uploadedUrl == null
-                            ? const Icon(Icons.person, size: 48, color: Colors.white)
+                            ? const Icon(
+                                Icons.person,
+                                size: 48,
+                                color: Colors.white,
+                              )
                             : null,
                       ),
                       Positioned(
@@ -194,7 +297,11 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                             onTap: _pickImage,
                             child: const Padding(
                               padding: EdgeInsets.all(6),
-                              child: Icon(Icons.edit, size: 16, color: Colors.white),
+                              child: Icon(
+                                Icons.edit,
+                                size: 16,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -211,7 +318,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                   controller: _nameCtrl,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(hintText: 'Full Name'),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter name' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Enter name' : null,
                 ),
                 divider,
 
@@ -238,11 +346,17 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                 Text('Department', style: labelStyle),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: _department,
-                  items: _departments.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  initialValue: _department,
+                  isExpanded: true,
+                  items: _departments
+                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .toList(),
                   onChanged: (v) => setState(() => _department = v),
-                  decoration: const InputDecoration(hintText: 'Select department'),
-                  validator: (v) => v == null ? 'Please select department' : null,
+                  decoration: const InputDecoration(
+                    hintText: 'Select department',
+                  ),
+                  validator: (v) =>
+                      v == null ? 'Please select department' : null,
                 ),
                 divider,
 
@@ -256,13 +370,21 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                           Text('Semester', style: labelStyle),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: _semester,
+                            initialValue: _semester,
                             items: _semesterMap.keys
-                                .map((roman) => DropdownMenuItem(value: roman, child: Text(roman)))
+                                .map(
+                                  (roman) => DropdownMenuItem(
+                                    value: roman,
+                                    child: Text(roman),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) => setState(() => _semester = v),
-                            decoration: const InputDecoration(hintText: 'Semester'),
-                            validator: (v) => v == null ? 'Please select semester' : null,
+                            decoration: const InputDecoration(
+                              hintText: 'Semester',
+                            ),
+                            validator: (v) =>
+                                v == null ? 'Please select semester' : null,
                           ),
                         ],
                       ),
@@ -275,16 +397,33 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                           Text('Batch', style: labelStyle),
                           const SizedBox(height: 6),
                           DropdownButtonFormField<String>(
-                            value: _batch,
+                            initialValue: _batch,
                             items: const [
-                              DropdownMenuItem(value: '2021 - 25', child: Text('2021 - 25')),
-                              DropdownMenuItem(value: '2022 - 26', child: Text('2022 - 26')),
-                              DropdownMenuItem(value: '2023 - 27', child: Text('2023 - 27')),
-                              DropdownMenuItem(value: '2024 - 28', child: Text('2024 - 28')),
-                              DropdownMenuItem(value: '2025 - 29', child: Text('2025 - 29')),
+                              DropdownMenuItem(
+                                value: '2021 - 25',
+                                child: Text('2021 - 25'),
+                              ),
+                              DropdownMenuItem(
+                                value: '2022 - 26',
+                                child: Text('2022 - 26'),
+                              ),
+                              DropdownMenuItem(
+                                value: '2023 - 27',
+                                child: Text('2023 - 27'),
+                              ),
+                              DropdownMenuItem(
+                                value: '2024 - 28',
+                                child: Text('2024 - 28'),
+                              ),
+                              DropdownMenuItem(
+                                value: '2025 - 29',
+                                child: Text('2025 - 29'),
+                              ),
                             ],
                             onChanged: (v) => setState(() => _batch = v),
-                            decoration: const InputDecoration(hintText: '20XX - XX'),
+                            decoration: const InputDecoration(
+                              hintText: '20XX - XX',
+                            ),
                           ),
                         ],
                       ),
@@ -323,7 +462,8 @@ class _StudentProfileScreenState extends State<StudentProfileScreen> {
                     hintText: 'Your address',
                     alignLabelWithHint: true,
                   ),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter address' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Enter address' : null,
                 ),
                 const SizedBox(height: 22),
 

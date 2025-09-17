@@ -40,6 +40,12 @@ class _WelcomeBlock extends StatelessWidget {
 class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   bool _collapsed = false;
   String _userName = "Loading...";
+  String? _profileImageUrl;
+
+  int _halfDay = 0;
+  int _medical = 0;
+  int _fullDay = 0;
+  List<Map<String, dynamic>> _pastLeaves = [];
 
   @override
   void initState() {
@@ -48,6 +54,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   Future<void> _fetchUserName() async {
+  try {
     final prefs = await SharedPreferences.getInstance();
     final collegeName = prefs.getString('collegeName');
     final rollNo = prefs.getString('rollNo');
@@ -62,11 +69,20 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
       if (snap.exists) {
         setState(() {
-          _userName = snap.data()?['name'] ?? 'Student';
+          _userName = (snap.data()?['name'] as String?) ?? 'Student';
         });
+      } else {
+        setState(() => _userName = 'Student');
       }
+    } else {
+      setState(() => _userName = 'Student');
     }
+  } catch (e) {
+    // If fetch fails, keep a safe default
+    setState(() => _userName = 'Student');
   }
+}
+
 
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
@@ -75,16 +91,21 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         title: const Text("Logout"),
         content: const Text("Are you sure you want to quit the application?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes"),
+          ),
         ],
       ),
     );
 
     if (confirmed == true) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('collegeName');
-      await prefs.remove('rollNo');
+      await prefs.clear();
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
       }
@@ -106,19 +127,23 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             expandedHeight: 200,
             collapsedHeight: 72,
             centerTitle: true,
-
             title: AnimatedOpacity(
               opacity: _collapsed ? 1 : 0,
               duration: const Duration(milliseconds: 180),
               child: const Text(
                 'Home',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-
             actionsIconTheme: const IconThemeData(color: Colors.white),
             actions: [
-              IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.notifications_none),
+              ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.settings_outlined),
                 onSelected: (value) {
@@ -138,7 +163,6 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 ],
               ),
             ],
-
             flexibleSpace: LayoutBuilder(
               builder: (context, constraints) {
                 final h = constraints.maxHeight;
@@ -172,10 +196,19 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                           child: Row(
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.white,
-                                child: Icon(Icons.person, size: 28, color: Colors.black54),
+                                backgroundImage: _profileImageUrl != null
+                                    ? NetworkImage(_profileImageUrl!)
+                                    : null,
+                                child: _profileImageUrl == null
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 28,
+                                        color: Colors.black54,
+                                      )
+                                    : null,
                               ),
                               const SizedBox(width: 12),
                               Expanded(child: _WelcomeBlock(name: _userName)),
@@ -196,58 +229,79 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Dashboard", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  "Dashboard",
+                  style: theme.textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 OutlinedButton(
                   onPressed: () {},
-                  style: OutlinedButton.styleFrom(shape: const StadiumBorder(), side: BorderSide(color: Colors.blue.shade300)),
+                  style: OutlinedButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    side: BorderSide(color: Colors.blue.shade300),
+                  ),
                   child: const Text("Leave History"),
                 ),
               ],
             ),
-
             const SizedBox(height: 12),
-
             Row(
-              children: const [
-                Expanded(child: _StatCard(icon: Icons.wb_sunny_outlined, label: 'Half Day', value: '07')),
-                SizedBox(width: 8),
-                Expanded(child: _StatCard(icon: Icons.medical_services_outlined, label: 'Medical', value: '10')),
-                SizedBox(width: 8),
-                Expanded(child: _StatCard(icon: Icons.calendar_today_outlined, label: 'Full Day', value: '05')),
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.wb_sunny_outlined,
+                    label: 'Half Day',
+                    value: '$_halfDay',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.medical_services_outlined,
+                    label: 'Medical',
+                    value: '$_medical',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Full Day',
+                    value: '$_fullDay',
+                  ),
+                ),
               ],
             ),
-
             const SizedBox(height: 20),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Your Past Leaves", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  "Your Past Leaves",
+                  style: theme.textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 TextButton(onPressed: () {}, child: const Text("See more ›")),
               ],
             ),
-
-            const _LeaveCard(
-              color: Color(0xFFE7F6FF),
-              iconColor: Color(0xFF0EA5E9),
-              title: 'Annual Leave',
-              subtitle: '1 Jan 2023 - 1 Jan 2023 (1 day)',
-              note: 'Personal Matter',
-            ),
-            const _LeaveCard(
-              color: Color(0xFFE6FFF3),
-              iconColor: Color(0xFF10B981),
-              title: 'Medical Leave',
-              subtitle: '22 Dec 2022 - 23 Dec 2022 (2 day)',
-              note: 'Ear infection caused by a polluted swimming pool',
-            ),
-            const _LeaveCard(
-              color: Color(0xFFFFF7E6),
-              iconColor: Color(0xFFF59E0B),
-              title: 'Medical Leave',
-              subtitle: '16 Nov 2022 - 23 Nov 2023 (7 day)',
-              note: 'Got COVID and need to be quarantined at least a week.',
-            ),
+            _pastLeaves.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Text("No past leaves yet"),
+                  )
+                : Column(
+                    children: _pastLeaves.map((leave) {
+                      return _LeaveCard(
+                        color: Colors.blue.shade50,
+                        iconColor: Colors.blue,
+                        title: leave['title'] ?? 'Leave',
+                        subtitle: leave['subtitle'] ?? '',
+                        note: leave['note'] ?? '',
+                      );
+                    }).toList(),
+                  ),
           ],
         ),
       ),
@@ -259,7 +313,11 @@ class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _StatCard({required this.icon, required this.label, required this.value});
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -271,9 +329,28 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: Colors.black54, size: 20), const SizedBox(width: 6), Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)))]),
+            Row(
+              children: [
+                Icon(icon, color: Colors.black54, size: 20),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+            ),
           ],
         ),
       ),
@@ -288,7 +365,13 @@ class _LeaveCard extends StatelessWidget {
   final Color color;
   final Color iconColor;
 
-  const _LeaveCard({required this.title, required this.subtitle, required this.note, required this.color, required this.iconColor});
+  const _LeaveCard({
+    required this.title,
+    required this.subtitle,
+    required this.note,
+    required this.color,
+    required this.iconColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +382,10 @@ class _LeaveCard extends StatelessWidget {
         leading: Container(
           height: 40,
           width: 40,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Icon(Icons.event_note_outlined, color: iconColor),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -329,7 +415,10 @@ class _BottomNav extends StatelessWidget {
       onDestinationSelected: (i) {
         switch (i) {
           case 0:
-            Navigator.pushReplacementNamed(context, StudentDashboardScreen.route);
+            Navigator.pushReplacementNamed(
+              context,
+              StudentDashboardScreen.route,
+            );
             break;
           case 1:
             Navigator.pushReplacementNamed(context, '/apply-leave');
@@ -340,9 +429,21 @@ class _BottomNav extends StatelessWidget {
         }
       },
       destinations: const [
-        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-        NavigationDestination(icon: Icon(Icons.add_circle_outline), selectedIcon: Icon(Icons.add_circle), label: 'Apply Leave'),
-        NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: 'Home',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.add_circle_outline),
+          selectedIcon: Icon(Icons.add_circle),
+          label: 'Apply Leave',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.history_outlined),
+          selectedIcon: Icon(Icons.history),
+          label: 'History',
+        ),
       ],
     );
   }

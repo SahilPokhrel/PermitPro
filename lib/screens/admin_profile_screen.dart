@@ -106,40 +106,144 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      final docRef = FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final prefs = await SharedPreferences.getInstance();
+
+      final department = _department;
+      final semesterKey = _semesterMap[_semester] ?? "sem1";
+
+      if (department == null || _semester == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("⚠️ Please select Department and Semester"),
+          ),
+        );
+        return;
+      }
+
+      final rollNo = widget.rollNo;
+
+      // 1️⃣ Build Users ref + payload (minimal info)
+      final usersRef = firestore
           .collection("Colleges")
           .doc(widget.collegeName)
           .collection("Users")
-          .doc(widget.rollNo);
+          .doc(rollNo);
 
-      await docRef.set({
+      final Map<String, dynamic> usersPayload = {
+        "role": "Admin",
         "name": _nameCtrl.text.trim(),
         "mobile": _mobileCtrl.text.trim(),
-        "department": _department,
-        "semester": _semesterMap[_semester] ?? "sem1",
+        "department": department,
+        "semester": semesterKey,
         "profileImageUrl": _uploadedUrl,
         "isProfileEdited": true,
-      }, SetOptions(merge: true));
+        "profileEditedAt": FieldValue.serverTimestamp(),
+      };
 
-      // save session defensively
-      final prefs = await SharedPreferences.getInstance();
+      // Write with merge
+      print("📌 [Admin Save] Writing usersRef with payload: $usersPayload");
+      await usersRef.set(usersPayload, SetOptions(merge: true));
+
+      // Verify the write by reading it back
+      final afterUsers = await usersRef.get();
+      print("📌 [Admin Save] usersRef after set: ${afterUsers.data()}");
+
+      // If the flag isn't present, try an explicit update and log failures
+      if (!(afterUsers.exists &&
+          (afterUsers.data()?['isProfileEdited'] == true))) {
+        print(
+          "⚠️ [Admin Save] isProfileEdited not found after set — attempting explicit update...",
+        );
+        try {
+          await usersRef.update({
+            "isProfileEdited": true,
+            "profileEditedAt": FieldValue.serverTimestamp(),
+          });
+
+          final afterUpdate = await usersRef.get();
+          print(
+            "📌 [Admin Save] usersRef after explicit update: ${afterUpdate.data()}",
+          );
+          if (!(afterUpdate.exists &&
+              (afterUpdate.data()?['isProfileEdited'] == true))) {
+            // still not set — notify
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  "⚠️ Warning: could not confirm isProfileEdited on Users doc.",
+                ),
+              ),
+            );
+            print(
+              "❌ [Admin Save] Explicit update completed but isProfileEdited still not present.",
+            );
+          }
+        } catch (e) {
+          print("❌ [Admin Save] Explicit update failed: $e");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("⚠️ Warning: failed to update Users doc: $e"),
+            ),
+          );
+        }
+      } else {
+        print("✅ [Admin Save] isProfileEdited successfully set in Users doc");
+      }
+
+      // 2️⃣ Save full profile into Admins collection inside their semester
+      final adminRef = firestore
+          .collection("Colleges")
+          .doc(widget.collegeName)
+          .collection("Departments")
+          .doc(department)
+          .collection("Semesters")
+          .doc(semesterKey)
+          .collection("Admins")
+          .doc(rollNo);
+
+      final adminPayload = {
+        "rollNo": rollNo,
+        "name": _nameCtrl.text.trim(),
+        "mobile": _mobileCtrl.text.trim(),
+        "department": department,
+        "semester": semesterKey,
+        "profileImageUrl": _uploadedUrl,
+        "createdAt": FieldValue.serverTimestamp(),
+      };
+
+      print(
+        "📌 [Admin Save] Writing adminRef at: Colleges/${widget.collegeName}/Departments/$department/Semesters/$semesterKey/Admins/$rollNo",
+      );
+      await adminRef.set(adminPayload, SetOptions(merge: true));
+
+      final afterAdmin = await adminRef.get();
+      print("📌 [Admin Save] adminRef after set: ${afterAdmin.data()}");
+
+      // 3️⃣ Save session locally
       await prefs.setString('collegeName', widget.collegeName);
-      await prefs.setString('rollNo', widget.rollNo);
+      await prefs.setString('rollNo', rollNo);
+      await prefs.setString('department', department);
+      await prefs.setString('semester', semesterKey);
+      await prefs.setString('role', "Admin");
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Profile saved ✅")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Profile saved successfully")),
+      );
 
+      // 4️⃣ Navigate to Admin Dashboard
       Navigator.pushNamedAndRemoveUntil(
         context,
         AdminDashboardScreen.route,
         (route) => false,
-        arguments: {"collegeName": widget.collegeName, "rollNo": widget.rollNo},
+        arguments: {"collegeName": widget.collegeName, "rollNo": rollNo},
       );
-    } catch (e) {
+    } catch (e, st) {
+      print("❌ [Admin Save] Failed: $e");
+      print(st);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Save failed: $e")));
+      ).showSnackBar(SnackBar(content: Text("❌ Save failed: $e")));
     }
   }
 
@@ -244,9 +348,20 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                 Text('Department', style: labelStyle),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: _department,
+                  value:
+                      _department, // use value instead of initialValue (Flutter recommends this)
+                  isExpanded: true, // ✅ makes the dropdown take full width
                   items: _departments
-                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .map(
+                        (d) => DropdownMenuItem(
+                          value: d,
+                          child: Text(
+                            d,
+                            overflow:
+                                TextOverflow.ellipsis, // ✅ avoids text overflow
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (v) => setState(() => _department = v),
                   decoration: const InputDecoration(
@@ -261,7 +376,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                 Text('Semester', style: labelStyle),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: _semester,
+                  initialValue: _semester,
                   items: _semesterMap.keys
                       .map(
                         (roman) =>

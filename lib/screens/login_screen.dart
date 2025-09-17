@@ -212,7 +212,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     _loadingColleges
                         ? const CircularProgressIndicator()
                         : DropdownButtonFormField<String>(
-                            value: _collegeCtrl.text.isNotEmpty ? _collegeCtrl.text : null,
+                            initialValue: _collegeCtrl.text.isNotEmpty ? _collegeCtrl.text : null,
                             decoration: const InputDecoration(labelText: 'College name', prefixIcon: Icon(Icons.account_balance_outlined)),
                             items: _colleges.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                             onChanged: (v) {

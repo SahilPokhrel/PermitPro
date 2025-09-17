@@ -42,10 +42,80 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _collapsed = false;
   String _userName = "Loading...";
 
+  // 🔹 Dashboard stats (future-proof)
+  int _accepted = 0;
+  int _pending = 0;
+  int _rejected = 0;
+
+  // 🔹 Quick summary
+  int _today = 0;
+  int _thisWeek = 0;
+  int _thisMonth = 0;
+
   @override
   void initState() {
     super.initState();
     _fetchUserName();
+    _fetchDashboardStats();
+  }
+
+  Future<void> _fetchDashboardStats() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final collegeName = prefs.getString('collegeName');
+      final department = prefs.getString('department');
+      final semester = prefs.getString('semester');
+
+      if (collegeName == null || department == null || semester == null) return;
+
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final startOfWeek = now.subtract(
+        Duration(days: now.weekday - 1),
+      ); // Monday
+      final startOfMonth = DateTime(now.year, now.month, 1);
+
+      // 🔹 collectionGroup is used at root level
+      final snap = await FirebaseFirestore.instance
+          .collectionGroup("Leaves")
+          .where("collegeName", isEqualTo: collegeName)
+          .where("department", isEqualTo: department)
+          .where("semester", isEqualTo: semester)
+          .get();
+
+      int accepted = 0, pending = 0, rejected = 0;
+      int today = 0, thisWeek = 0, thisMonth = 0;
+
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        final status = data['status'] ?? 'pending';
+        final ts = (data['createdAt'] as Timestamp?)?.toDate();
+
+        if (status == 'accepted') accepted++;
+        if (status == 'pending') pending++;
+        if (status == 'rejected') rejected++;
+
+        if (ts != null) {
+          if (ts.isAfter(startOfDay)) today++;
+          if (ts.isAfter(startOfWeek)) thisWeek++;
+          if (ts.isAfter(startOfMonth)) thisMonth++;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _accepted = accepted;
+          _pending = pending;
+          _rejected = rejected;
+          _today = today;
+          _thisWeek = thisWeek;
+          _thisMonth = thisMonth;
+        });
+      }
+    } catch (e, st) {
+      print("❌ [Dashboard Stats] Failed: $e");
+      print(st);
+    }
   }
 
   Future<void> _fetchUserName() async {
@@ -73,7 +143,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         setState(() => _userName = 'Admin');
       }
     } catch (e) {
-      // If fetch fails, keep a safe default
       setState(() => _userName = 'Admin');
     }
   }
@@ -85,8 +154,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: const Text("Logout"),
         content: const Text("Are you sure you want to quit the application?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("No"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes"),
+          ),
         ],
       ),
     );
@@ -123,11 +198,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             title: AnimatedOpacity(
               opacity: _collapsed ? 1 : 0,
               duration: const Duration(milliseconds: 180),
-              child: const Text('Home', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Home',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
             actionsIconTheme: const IconThemeData(color: Colors.white),
             actions: [
-              IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(Icons.notifications_none),
+              ),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.settings_outlined),
                 onSelected: (value) {
@@ -158,10 +242,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 }
 
                 return ClipRRect(
-                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(24), bottomRight: Radius.circular(24)),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
+                  ),
                   child: Container(
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(colors: [gradientStart, gradientEnd], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      gradient: LinearGradient(
+                        colors: [gradientStart, gradientEnd],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                     ),
                     child: SafeArea(
                       bottom: false,
@@ -173,9 +264,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.person, size: 28, color: Colors.black54)),
+                              const CircleAvatar(
+                                radius: 28,
+                                backgroundColor: Colors.white,
+                                child: Icon(
+                                  Icons.person,
+                                  size: 28,
+                                  color: Colors.black54,
+                                ),
+                              ),
                               const SizedBox(width: 12),
-                              Expanded(child: _WelcomeBlockAdmin(name: _userName)),
+                              Expanded(
+                                child: _WelcomeBlockAdmin(name: _userName),
+                              ),
                             ],
                           ),
                         ),
@@ -193,10 +294,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Dashboard", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  "Dashboard",
+                  style: theme.textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     shape: const StadiumBorder(),
                     side: BorderSide(color: Colors.blue.shade300),
                   ),
@@ -208,12 +317,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             const SizedBox(height: 12),
 
             Row(
-              children: const [
-                Expanded(child: _AdminStatCard(label: 'Accepted', value: '12', icon: Icons.check_circle_outline)),
-                SizedBox(width: 8),
-                Expanded(child: _AdminStatCard(label: 'Pending', value: '03', icon: Icons.pending_outlined)),
-                SizedBox(width: 8),
-                Expanded(child: _AdminStatCard(label: 'Rejected', value: '05', icon: Icons.cancel_outlined)),
+              children: [
+                Expanded(
+                  child: _AdminStatCard(
+                    label: 'Accepted',
+                    value: '$_accepted',
+                    icon: Icons.check_circle_outline,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _AdminStatCard(
+                    label: 'Pending',
+                    value: '$_pending',
+                    icon: Icons.pending_outlined,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _AdminStatCard(
+                    label: 'Rejected',
+                    value: '$_rejected',
+                    icon: Icons.cancel_outlined,
+                  ),
+                ),
               ],
             ),
 
@@ -222,34 +349,62 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Other Options", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  "Other Options",
+                  style: theme.textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 TextButton(onPressed: () {}, child: const Text("View all")),
               ],
             ),
             const SizedBox(height: 12),
 
-            _AdminOptionTile(icon: Icons.person_add_alt, title: 'Add new student', onTap: () {}),
+            _AdminOptionTile(
+              icon: Icons.person_add_alt,
+              title: 'Add new student',
+              onTap: () {},
+            ),
             const SizedBox(height: 10),
-            _AdminOptionTile(icon: Icons.remove_red_eye_outlined, title: 'View Students', onTap: () {}),
+            _AdminOptionTile(
+              icon: Icons.remove_red_eye_outlined,
+              title: 'View Students',
+              onTap: () {},
+            ),
             const SizedBox(height: 10),
-            _AdminOptionTile(icon: Icons.bar_chart, title: 'Report & Analytics', onTap: () {}),
+            _AdminOptionTile(
+              icon: Icons.bar_chart,
+              title: 'Report & Analytics',
+              onTap: () {},
+            ),
 
             const SizedBox(height: 18),
 
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               elevation: 0,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Quick Summary', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                    _smallMetric('Today', '08'),
-                    _smallMetric('This Week', '43'),
-                    _smallMetric('This Month', '210'),
-                  ]),
-                ]),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Quick Summary',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _smallMetric('Today', '$_today'),
+                        _smallMetric('This Week', '$_thisWeek'),
+                        _smallMetric('This Month', '$_thisMonth'),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -259,7 +414,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _smallMetric(String label, String value) {
-    return Column(children: [Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey))]);
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
+    );
   }
 }
 
@@ -268,7 +432,11 @@ class _AdminStatCard extends StatelessWidget {
   final String label;
   final String value;
 
-  const _AdminStatCard({required this.icon, required this.label, required this.value});
+  const _AdminStatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -277,17 +445,33 @@ class _AdminStatCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(icon, color: Colors.black54, size: 20),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: Colors.black54, size: 20),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ]),
-          const SizedBox(height: 8),
-          Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
-        ]),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -305,14 +489,33 @@ class _AdminOptionTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)]),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+            ),
+          ],
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        child: Row(children: [
-          CircleAvatar(backgroundColor: Colors.teal.shade50, child: Icon(icon, color: Colors.teal)),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
-          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-        ]),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.teal.shade50,
+              child: Icon(icon, color: Colors.teal),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          ],
+        ),
       ),
     );
   }
@@ -339,9 +542,21 @@ class _AdminBottomNav extends StatelessWidget {
         }
       },
       destinations: const [
-        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-        NavigationDestination(icon: Icon(Icons.request_page), selectedIcon: Icon(Icons.request_page), label: 'Active requests'),
-        NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: 'Home',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.request_page),
+          selectedIcon: Icon(Icons.request_page),
+          label: 'Active requests',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.history_outlined),
+          selectedIcon: Icon(Icons.history),
+          label: 'History',
+        ),
       ],
     );
   }

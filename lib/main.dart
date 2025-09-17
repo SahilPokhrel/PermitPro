@@ -1,6 +1,7 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'firebase_options.dart';
 
 import 'screens/splash_screen.dart';
@@ -19,6 +20,11 @@ import 'screens/admin_dashboard_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Supabase.initialize(
+    url: 'https://rpngyddzjzfmsvtvnclh.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJwbmd5ZGR6anpmbXN2dHZuY2xoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY1Mjg1ODQsImV4cCI6MjA3MjEwNDU4NH0.tMr_c0YE48yNyjRea6H13xtwcLi0ROWpt7XwHI-3iTM',
+  );
   runApp(const PermitProApp());
 }
 
