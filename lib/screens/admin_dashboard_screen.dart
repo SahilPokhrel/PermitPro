@@ -41,6 +41,7 @@ class _WelcomeBlockAdmin extends StatelessWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _collapsed = false;
   String _userName = "Loading...";
+  String? _profileImageUrl;
 
   // 🔹 Dashboard stats (future-proof)
   int _accepted = 0;
@@ -135,6 +136,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         if (snap.exists) {
           setState(() {
             _userName = (snap.data()?['name'] as String?) ?? 'Admin';
+            _profileImageUrl = snap
+                .data()?['profileImageUrl']; // ✅ fetch Supabase URL
           });
         } else {
           setState(() => _userName = 'Admin');
@@ -264,15 +267,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const CircleAvatar(
+                              CircleAvatar(
                                 radius: 28,
                                 backgroundColor: Colors.white,
-                                child: Icon(
-                                  Icons.person,
-                                  size: 28,
-                                  color: Colors.black54,
-                                ),
+                                backgroundImage:
+                                    (_profileImageUrl != null &&
+                                        _profileImageUrl!.isNotEmpty)
+                                    ? NetworkImage(_profileImageUrl!)
+                                    : null,
+                                child:
+                                    (_profileImageUrl == null ||
+                                        _profileImageUrl!.isEmpty)
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 28,
+                                        color: Colors.black54,
+                                      )
+                                    : null,
                               ),
+
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _WelcomeBlockAdmin(name: _userName),
@@ -444,31 +457,34 @@ class _AdminStatCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+        padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: Colors.black54, size: 20),
-                const SizedBox(width: 6),
-                Expanded(
+                Icon(icon, color: Colors.black54, size: 16), // smaller icon
+                const SizedBox(width: 4),
+                Flexible(
                   child: Text(
                     label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12, // smaller font
                       fontWeight: FontWeight.w600,
                     ),
+                    overflow: TextOverflow.visible, // ✅ allow full text
+                    softWrap: false, // keep one line
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               value,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                fontSize: 20, // smaller for balance
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
         ),

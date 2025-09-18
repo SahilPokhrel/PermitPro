@@ -73,7 +73,6 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
     final picked = await _picker.pickImage(source: ImageSource.gallery);
     if (picked != null) {
       setState(() => _pickedImage = File(picked.path));
-      await _uploadToSupabase(File(picked.path));
     }
   }
 
@@ -123,6 +122,22 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
 
       final rollNo = widget.rollNo;
 
+      // ✅ Upload to Supabase before saving to Firestore
+      if (_pickedImage != null) {
+        try {
+          await _uploadToSupabase(
+            _pickedImage!,
+          ); // function already sets _uploadedUrl
+          print("✅ [Admin Save] Uploaded file to Supabase: $_uploadedUrl");
+        } catch (e) {
+          print("❌ [Admin Save] Upload failed: $e");
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("⚠️ Failed to upload profile image")),
+          );
+          return; // stop save if upload fails
+        }
+      }
+
       // 1️⃣ Build Users ref + payload (minimal info)
       final usersRef = firestore
           .collection("Colleges")
@@ -136,7 +151,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
         "mobile": _mobileCtrl.text.trim(),
         "department": department,
         "semester": semesterKey,
-        "profileImageUrl": _uploadedUrl,
+        "profileImageUrl": _uploadedUrl, // ✅ updated after Supabase upload
         "isProfileEdited": true,
         "profileEditedAt": FieldValue.serverTimestamp(),
       };
@@ -348,8 +363,7 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                 Text('Department', style: labelStyle),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value:
-                      _department, // use value instead of initialValue (Flutter recommends this)
+                  initialValue: _department, // ✅ use value instead of initialValue
                   isExpanded: true, // ✅ makes the dropdown take full width
                   items: _departments
                       .map(

@@ -42,10 +42,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   String _userName = "Loading...";
   String? _profileImageUrl;
 
-  int _halfDay = 0;
-  int _medical = 0;
-  int _fullDay = 0;
-  List<Map<String, dynamic>> _pastLeaves = [];
+  final int _halfDay = 0;
+  final int _medical = 0;
+  final int _fullDay = 0;
+  final List<Map<String, dynamic>> _pastLeaves = [];
 
   @override
   void initState() {
@@ -54,35 +54,34 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   Future<void> _fetchUserName() async {
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final collegeName = prefs.getString('collegeName');
-    final rollNo = prefs.getString('rollNo');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final collegeName = prefs.getString('collegeName');
+      final rollNo = prefs.getString('rollNo');
 
-    if (collegeName != null && rollNo != null) {
-      final snap = await FirebaseFirestore.instance
-          .collection("Colleges")
-          .doc(collegeName)
-          .collection("Users")
-          .doc(rollNo)
-          .get();
+      if (collegeName != null && rollNo != null) {
+        final snap = await FirebaseFirestore.instance
+            .collection("Colleges")
+            .doc(collegeName)
+            .collection("Users")
+            .doc(rollNo)
+            .get();
 
-      if (snap.exists) {
-        setState(() {
-          _userName = (snap.data()?['name'] as String?) ?? 'Student';
-        });
+        if (snap.exists) {
+          setState(() {
+            _userName = (snap.data()?['name'] as String?) ?? 'Student';
+            _profileImageUrl = snap.data()?['profileImageUrl']; // ✅ fetch URL
+          });
+        } else {
+          setState(() => _userName = 'Student');
+        }
       } else {
         setState(() => _userName = 'Student');
       }
-    } else {
+    } catch (e) {
       setState(() => _userName = 'Student');
     }
-  } catch (e) {
-    // If fetch fails, keep a safe default
-    setState(() => _userName = 'Student');
   }
-}
-
 
   Future<void> _logout() async {
     final confirmed = await showDialog<bool>(
@@ -325,31 +324,34 @@ class _StatCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: Colors.black54, size: 20),
-                const SizedBox(width: 6),
+                Icon(icon, color: Colors.black54, size: 16), // ✅ smaller icon
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12, // ✅ smaller text
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               value,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                fontSize: 20, // ✅ slightly smaller number for balance
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ],
         ),
