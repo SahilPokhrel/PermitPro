@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ for signed URLs
 import 'package:url_launcher/url_launcher.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart'; // ✅ for inline PDF preview
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+
+import 'student_dashboard_screen.dart'; // ✅ for inline PDF preview
 
 class StudentHistoryScreen extends StatefulWidget {
   static const route = '/student-history';
@@ -27,6 +29,9 @@ class StudentHistoryScreen extends StatefulWidget {
 class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
   int _currentIndex = 2; // 0 = Home, 1 = Apply Leave, 2 = History
   final supabase = Supabase.instance.client;
+
+  Map<String, dynamic>? get args =>
+      ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
 
   DateTime _parseDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -71,19 +76,37 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
 
   void _onNavTap(int index) {
     setState(() => _currentIndex = index);
+
     if (index == 0) {
-      Navigator.pushReplacementNamed(context, '/student-dashboard');
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        StudentDashboardScreen.route,
+        (route) => false,
+        arguments: args,
+      );
     } else if (index == 1) {
-      Navigator.pushReplacementNamed(context, '/apply-leave');
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/apply-leave',
+        (route) => false,
+        arguments: args,
+      );
+    } else if (index == 2) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        StudentHistoryScreen.route,
+        (route) => false,
+        arguments: args,
+      );
     }
   }
 
   void _goBack() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-    } else {
-      Navigator.pushReplacementNamed(context, '/student-dashboard');
-    }
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      StudentDashboardScreen.route,
+      (route) => false, // remove all previous routes
+    );
   }
 
   Future<String?> _getSignedUrl(String path) async {

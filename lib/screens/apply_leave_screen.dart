@@ -163,7 +163,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  "Leave Sent Successfully!",
+                  "Leave Requested Successfully!",
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
@@ -302,11 +302,11 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   }
 
   void _goBack() {
-    if (Navigator.canPop(context)) {
-      Navigator.pop(context);
-    } else {
-      Navigator.pushReplacementNamed(context, StudentDashboardScreen.route);
-    }
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      StudentDashboardScreen.route,
+      (route) => false, // remove all previous routes
+    );
   }
 
   @override
