@@ -5,7 +5,8 @@ import 'student_dashboard_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'student_history_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ApplyLeaveScreen extends StatefulWidget {
   static const route = '/apply-leave';
@@ -22,7 +23,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   DateTime? _toDate;
   TimeOfDay? _halfDayTime;
   final _reasonController = TextEditingController();
-  List<PlatformFile> _selectedFiles = [];
+  final List<PlatformFile> _selectedFiles = [];
 
   // Controllers for date/time display
   final _fromDateController = TextEditingController();
@@ -211,13 +212,19 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     setState(() => _submitting = true);
 
     try {
-      // 👉 Get rollNo from your app’s session/login state
-      final rollNo = "1TJ22IS011"; // replace with dynamic session value
+      // ✅ Fetch session from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final rollNo = prefs.getString('rollNo');
+      final collegeName = prefs.getString('collegeName');
 
-      // 🔹 Fetch user document
+      if (rollNo == null || collegeName == null) {
+        throw Exception("Session expired. Please log in again.");
+      }
+
+      // 🔹 Fetch user document for department + semester
       final userDoc = await FirebaseFirestore.instance
           .collection("Colleges")
-          .doc("T. John Group Of Institutions")
+          .doc(collegeName)
           .collection("Users")
           .doc(rollNo)
           .get();
@@ -226,11 +233,10 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
 
       final departmentName = userDoc["department"];
       final semester = userDoc["semester"];
-      final collegeName = "T. John Group Of Institutions";
 
-      // 🔹 Upload files to Supabase
+      // 🔹 Upload files to Supabase (store file paths instead of URLs)
       final supabase = Supabase.instance.client;
-      List<String> uploadedFileUrls = [];
+      List<String> uploadedFilePaths = [];
 
       for (final file in _selectedFiles) {
         final remotePath = "$rollNo/${file.name}";
@@ -255,10 +261,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
               );
         }
 
-        final url = supabase.storage
-            .from('leave-docs')
-            .getPublicUrl(remotePath);
-        uploadedFileUrls.add(url);
+        uploadedFilePaths.add(remotePath); // ✅ Save path, not public URL
       }
 
       // 🔹 Firestore path for leave request
@@ -281,7 +284,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         "toDate": Timestamp.fromDate(_toDate!),
         "halfDayTime": _halfDayTime?.format(context),
         "reason": _reasonController.text.trim(),
-        "files": uploadedFileUrls,
+        "files": uploadedFilePaths, // ✅ store file paths only
         "timestamp": FieldValue.serverTimestamp(),
         "status": "pending",
       });
@@ -312,7 +315,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       extendBodyBehindAppBar: true,
       bottomNavigationBar: NavigationBar(
         selectedIndex: 1,
-        onDestinationSelected: (i) {
+        onDestinationSelected: (i) async {
           switch (i) {
             case 0:
               Navigator.pushReplacementNamed(
@@ -323,8 +326,40 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
             case 1:
               break;
             case 2:
+              final prefs = await SharedPreferences.getInstance();
+              final collegeName = prefs.getString('collegeName');
+              final rollNo = prefs.getString('rollNo');
+
+              if (collegeName != null && rollNo != null) {
+                final snap = await FirebaseFirestore.instance
+                    .collection("Colleges")
+                    .doc(collegeName)
+                    .collection("Users")
+                    .doc(rollNo)
+                    .get();
+
+                if (snap.exists) {
+                  final data = snap.data()!;
+                  final department = data['department'];
+                  final semester = data['semester'];
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StudentHistoryScreen(
+                        collegeName: collegeName,
+                        department: department,
+                        semester: semester,
+                        rollNo: rollNo,
+                      ),
+                    ),
+                  );
+                  return;
+                }
+              }
+
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('History screen coming soon')),
+                const SnackBar(content: Text("Student details not found")),
               );
               break;
           }
@@ -347,6 +382,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
           ),
         ],
       ),
+
       body: Column(
         children: [
           // 🔹 Top Header

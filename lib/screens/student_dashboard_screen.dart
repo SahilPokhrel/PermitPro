@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'student_history_screen.dart';
 
 class StudentDashboardScreen extends StatefulWidget {
   static const route = '/student-dashboard';
@@ -70,7 +71,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         if (snap.exists) {
           setState(() {
             _userName = (snap.data()?['name'] as String?) ?? 'Student';
-            _profileImageUrl = snap.data()?['profileImageUrl']; // ✅ fetch URL
+            _profileImageUrl = snap.data()?['profileImageUrl'];
           });
         } else {
           setState(() => _userName = 'Student');
@@ -111,12 +112,83 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     }
   }
 
+  // 🔹 Centralized navigation to History
+  Future<void> _goToHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final collegeName = prefs.getString('collegeName');
+    final rollNo = prefs.getString('rollNo');
+    String? department = prefs.getString('department');
+    String? semester = prefs.getString('semester');
+
+    if (collegeName == null || rollNo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("⚠️ Missing student details. Please login again."),
+        ),
+      );
+      return;
+    }
+
+    // ✅ Fallback: If department/semester are missing, fetch from Firestore
+    if (department == null || semester == null) {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection("Colleges")
+            .doc(collegeName)
+            .collection("Users")
+            .doc(rollNo)
+            .get();
+
+        if (snap.exists) {
+          final data = snap.data()!;
+          department = data['department'];
+          semester = data['semester'];
+
+          // Save back into SharedPreferences for future use
+          if (department != null && semester != null) {
+            await prefs.setString('department', department!);
+            await prefs.setString('semester', semester!);
+            debugPrint(
+              "✅ [goToHistory] Fetched and cached dept=$department, sem=$semester",
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint("❌ [goToHistory] Firestore fetch failed: $e");
+      }
+    }
+
+    // Still missing dept/sem? Block navigation
+    if (department == null || semester == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ Could not find department/semester.")),
+      );
+      return;
+    }
+
+    debugPrint(
+      "➡️ Navigating to history with: college=$collegeName, dept=$department, sem=$semester, rollNo=$rollNo",
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StudentHistoryScreen(
+          collegeName: collegeName,
+          department: department!,
+          semester: semester!,
+          rollNo: rollNo,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
-      bottomNavigationBar: const _BottomNav(),
+      bottomNavigationBar: _BottomNav(goToHistory: _goToHistory),
       body: NestedScrollView(
         headerSliverBuilder: (context, inner) => [
           SliverAppBar(
@@ -235,7 +307,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   ),
                 ),
                 OutlinedButton(
-                  onPressed: () {},
+                  onPressed: _goToHistory,
                   style: OutlinedButton.styleFrom(
                     shape: const StadiumBorder(),
                     side: BorderSide(color: Colors.blue.shade300),
@@ -282,7 +354,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                TextButton(onPressed: () {}, child: const Text("See more ›")),
+                TextButton(
+                  onPressed: _goToHistory,
+                  child: const Text("See more ›"),
+                ),
               ],
             ),
             _pastLeaves.isEmpty
@@ -330,7 +405,7 @@ class _StatCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(icon, color: Colors.black54, size: 16), // ✅ smaller icon
+                Icon(icon, color: Colors.black54, size: 16),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -338,7 +413,7 @@ class _StatCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 12, // ✅ smaller text
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -348,10 +423,7 @@ class _StatCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 20, // ✅ slightly smaller number for balance
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -408,7 +480,8 @@ class _LeaveCard extends StatelessWidget {
 }
 
 class _BottomNav extends StatelessWidget {
-  const _BottomNav();
+  final Future<void> Function() goToHistory;
+  const _BottomNav({required this.goToHistory});
 
   @override
   Widget build(BuildContext context) {
@@ -426,7 +499,7 @@ class _BottomNav extends StatelessWidget {
             Navigator.pushReplacementNamed(context, '/apply-leave');
             break;
           case 2:
-            Navigator.pushReplacementNamed(context, '/history');
+            goToHistory();
             break;
         }
       },
