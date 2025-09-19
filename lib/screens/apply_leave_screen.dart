@@ -212,7 +212,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     setState(() => _submitting = true);
 
     try {
-      // ✅ Fetch session from SharedPreferences
+      // ✅ Fetch session
       final prefs = await SharedPreferences.getInstance();
       final rollNo = prefs.getString('rollNo');
       final collegeName = prefs.getString('collegeName');
@@ -221,7 +221,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         throw Exception("Session expired. Please log in again.");
       }
 
-      // 🔹 Fetch user document for department + semester
+      // ✅ Fetch user profile (must have department + semester)
       final userDoc = await FirebaseFirestore.instance
           .collection("Colleges")
           .doc(collegeName)
@@ -234,7 +234,11 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       final departmentName = userDoc["department"];
       final semester = userDoc["semester"];
 
-      // 🔹 Upload files to Supabase (store file paths instead of URLs)
+      if (departmentName == null || semester == null) {
+        throw Exception("Department or semester missing in user profile");
+      }
+
+      // ✅ Upload files to Supabase
       final supabase = Supabase.instance.client;
       List<String> uploadedFilePaths = [];
 
@@ -261,10 +265,10 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
               );
         }
 
-        uploadedFilePaths.add(remotePath); // ✅ Save path, not public URL
+        uploadedFilePaths.add(remotePath);
       }
 
-      // 🔹 Firestore path for leave request
+      // ✅ Firestore path for leave request
       final firestore = FirebaseFirestore.instance;
       final requestRef = firestore
           .collection("Colleges")
@@ -278,15 +282,20 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
           .collection("leave_requests")
           .doc();
 
+      // ✅ Store all required fields (no more mismatches)
       await requestRef.set({
         "type": _selectedType,
         "fromDate": Timestamp.fromDate(_fromDate!),
         "toDate": Timestamp.fromDate(_toDate!),
         "halfDayTime": _halfDayTime?.format(context),
         "reason": _reasonController.text.trim(),
-        "files": uploadedFilePaths, // ✅ store file paths only
+        "files": uploadedFilePaths,
         "timestamp": FieldValue.serverTimestamp(),
         "status": "pending",
+        "collegeName": collegeName,
+        "department": departmentName,
+        "semester": semester,
+        "studentId": rollNo,
       });
 
       await _showSuccessDialog();

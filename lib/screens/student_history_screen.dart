@@ -165,7 +165,7 @@ class _StudentHistoryScreenState extends State<StudentHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final path =
+    final _ =
         "Colleges/${widget.collegeName}/Departments/${widget.department}/Semesters/${widget.semester}/Requests/${widget.rollNo}/leave_requests";
 
     return Scaffold(

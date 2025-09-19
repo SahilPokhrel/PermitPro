@@ -146,8 +146,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
           // Save back into SharedPreferences for future use
           if (department != null && semester != null) {
-            await prefs.setString('department', department!);
-            await prefs.setString('semester', semester!);
+            await prefs.setString('department', department);
+            await prefs.setString('semester', semester);
             debugPrint(
               "✅ [goToHistory] Fetched and cached dept=$department, sem=$semester",
             );

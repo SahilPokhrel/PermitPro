@@ -1,7 +1,14 @@
 // lib/screens/admin_dashboard_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'add_student_screen.dart';
+import 'view_students_screen.dart';
+import 'reports_screen.dart';
+import 'active_requests_screen.dart';
+import 'admin_history_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   static const route = '/admin-dashboard';
@@ -43,58 +50,126 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String _userName = "Loading...";
   String? _profileImageUrl;
 
-  // 🔹 Dashboard stats (future-proof)
+  // admin context
+  String? _collegeName;
+  String? _rollNo;
+  String? _department;
+  List<String> _assignedSemesters = [];
+
+  // Dashboard stats
   int _accepted = 0;
   int _pending = 0;
   int _rejected = 0;
 
-  // 🔹 Quick summary
   int _today = 0;
   int _thisWeek = 0;
   int _thisMonth = 0;
 
+  StreamSubscription<QuerySnapshot>? _leavesSub;
+
   @override
   void initState() {
     super.initState();
-    _fetchUserName();
-    _fetchDashboardStats();
+    _init();
   }
 
-  Future<void> _fetchDashboardStats() async {
+  Future<void> _init() async {
+    await _fetchUserInfo();
+    _subscribeToLeaveRequests();
+  }
+
+  Future<void> _fetchUserInfo() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final collegeName = prefs.getString('collegeName');
-      final department = prefs.getString('department');
-      final semester = prefs.getString('semester');
+      _collegeName = prefs.getString('collegeName');
+      _rollNo = prefs.getString('rollNo');
 
-      if (collegeName == null || department == null || semester == null) return;
+      if (_collegeName != null && _rollNo != null) {
+        final snap = await FirebaseFirestore.instance
+            .collection("Colleges")
+            .doc(_collegeName)
+            .collection("Users")
+            .doc(_rollNo)
+            .get();
 
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
-      final startOfWeek = now.subtract(
-        Duration(days: now.weekday - 1),
-      ); // Monday
-      final startOfMonth = DateTime(now.year, now.month, 1);
+        if (snap.exists) {
+          final data = snap.data()!;
+          setState(() {
+            _userName = (data['name'] as String?) ?? 'Admin';
+            _profileImageUrl = (data['profileImageUrl'] as String?) ?? '';
+            _department = (data['department'] as String?) ?? _department;
+            // assignedSemesters can be a list in user doc, or a single 'semester' string
+            final dynamic sems = data['assignedSemesters'] ?? data['semesters'] ?? data['semester'];
+            if (sems is List) {
+              _assignedSemesters = sems.map((e) => e.toString()).toList();
+            } else if (sems is String) {
+              _assignedSemesters = [sems];
+            }
+            // fallback: if still empty try any 'semester' field
+            if (_assignedSemesters.isEmpty && data['semester'] != null) {
+              _assignedSemesters = [data['semester'].toString()];
+            }
+          });
+        } else {
+          setState(() => _userName = 'Admin');
+        }
+      } else {
+        setState(() => _userName = 'Admin');
+      }
+    } catch (e, st) {
+      debugPrint('Failed to fetch admin info: $e\n$st');
+      setState(() => _userName = 'Admin');
+    }
+  }
 
-      // 🔹 collectionGroup is used at root level
-      final snap = await FirebaseFirestore.instance
-          .collectionGroup("Leaves")
-          .where("collegeName", isEqualTo: collegeName)
-          .where("department", isEqualTo: department)
-          .where("semester", isEqualTo: semester)
-          .get();
+  DateTime? _toDateTime(dynamic ts) {
+    if (ts == null) return null;
+    if (ts is Timestamp) return ts.toDate();
+    if (ts is DateTime) return ts;
+    if (ts is int) return DateTime.fromMillisecondsSinceEpoch(ts);
+    return null;
+  }
 
+  void _subscribeToLeaveRequests() {
+    // Cancel previous
+    _leavesSub?.cancel();
+
+    // Need admin context
+    if (_collegeName == null || _department == null || _assignedSemesters.isEmpty) {
+      // wait and try again after a short delay
+      Future.delayed(const Duration(milliseconds: 400), _subscribeToLeaveRequests);
+      return;
+    }
+
+    _leavesSub = FirebaseFirestore.instance
+        .collectionGroup('leave_requests')
+        .snapshots()
+        .listen((qs) {
       int accepted = 0, pending = 0, rejected = 0;
       int today = 0, thisWeek = 0, thisMonth = 0;
 
-      for (var doc in snap.docs) {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final startOfWeek = startOfDay.subtract(Duration(days: now.weekday - 1)); // Monday
+      final startOfMonth = DateTime(now.year, now.month, 1);
+
+      for (final doc in qs.docs) {
+        final path = doc.reference.path;
+        // Ensure path belongs to the admin's college & department
+        final expectedPrefix = 'Colleges/${_collegeName}/Departments/${_department}/';
+        if (!path.contains(expectedPrefix)) continue;
+
+        // Check semester match
+        final matchesSemester = _assignedSemesters.any((s) => path.contains('/Semesters/$s/'));
+        if (!matchesSemester) continue;
+
         final data = doc.data();
-        final status = data['status'] ?? 'pending';
-        final ts = (data['createdAt'] as Timestamp?)?.toDate();
+        final status = (data['status'] ?? 'pending').toString().toLowerCase();
+        final ts = _toDateTime(data['timestamp']);
 
         if (status == 'accepted') accepted++;
-        if (status == 'pending') pending++;
-        if (status == 'rejected') rejected++;
+        else if (status == 'rejected') rejected++;
+        else pending++;
 
         if (ts != null) {
           if (ts.isAfter(startOfDay)) today++;
@@ -113,41 +188,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _thisMonth = thisMonth;
         });
       }
-    } catch (e, st) {
-      print("❌ [Dashboard Stats] Failed: $e");
-      print(st);
-    }
-  }
-
-  Future<void> _fetchUserName() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final collegeName = prefs.getString('collegeName');
-      final rollNo = prefs.getString('rollNo');
-
-      if (collegeName != null && rollNo != null) {
-        final snap = await FirebaseFirestore.instance
-            .collection("Colleges")
-            .doc(collegeName)
-            .collection("Users")
-            .doc(rollNo)
-            .get();
-
-        if (snap.exists) {
-          setState(() {
-            _userName = (snap.data()?['name'] as String?) ?? 'Admin';
-            _profileImageUrl = snap
-                .data()?['profileImageUrl']; // ✅ fetch Supabase URL
-          });
-        } else {
-          setState(() => _userName = 'Admin');
-        }
-      } else {
-        setState(() => _userName = 'Admin');
-      }
-    } catch (e) {
-      setState(() => _userName = 'Admin');
-    }
+    }, onError: (e) {
+      debugPrint('Leave subscription error: $e');
+    });
   }
 
   Future<void> _confirmAndLogout() async {
@@ -157,14 +200,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         title: const Text("Logout"),
         content: const Text("Are you sure you want to quit the application?"),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("No"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Yes"),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes")),
         ],
       ),
     );
@@ -173,10 +210,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('collegeName');
       await prefs.remove('rollNo');
-      if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
-      }
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (r) => false);
     }
+  }
+
+  @override
+  void dispose() {
+    _leavesSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -186,7 +227,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     const gradientEnd = Color(0xFF0EA5E9);
 
     return Scaffold(
-      bottomNavigationBar: const _AdminBottomNav(),
+      bottomNavigationBar: _AdminBottomNav(),
       body: NestedScrollView(
         headerSliverBuilder: (context, inner) => [
           SliverAppBar(
@@ -211,10 +252,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             actionsIconTheme: const IconThemeData(color: Colors.white),
             actions: [
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_none),
-              ),
+              IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
               PopupMenuButton<String>(
                 icon: const Icon(Icons.settings_outlined),
                 onSelected: (value) {
@@ -271,25 +309,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 radius: 28,
                                 backgroundColor: Colors.white,
                                 backgroundImage:
-                                    (_profileImageUrl != null &&
-                                        _profileImageUrl!.isNotEmpty)
-                                    ? NetworkImage(_profileImageUrl!)
-                                    : null,
-                                child:
-                                    (_profileImageUrl == null ||
-                                        _profileImageUrl!.isEmpty)
-                                    ? const Icon(
-                                        Icons.person,
-                                        size: 28,
-                                        color: Colors.black54,
-                                      )
+                                    (_profileImageUrl != null && _profileImageUrl!.isNotEmpty)
+                                        ? NetworkImage(_profileImageUrl!)
+                                        : null,
+                                child: (_profileImageUrl == null || _profileImageUrl!.isEmpty)
+                                    ? const Icon(Icons.person, size: 28, color: Colors.black54)
                                     : null,
                               ),
-
                               const SizedBox(width: 12),
-                              Expanded(
-                                child: _WelcomeBlockAdmin(name: _userName),
-                              ),
+                              Expanded(child: _WelcomeBlockAdmin(name: _userName)),
                             ],
                           ),
                         ),
@@ -309,20 +337,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               children: [
                 Text(
                   "Dashboard",
-                  style: theme.textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700),
                 ),
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     shape: const StadiumBorder(),
                     side: BorderSide(color: Colors.blue.shade300),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    // open Admin history page showing handled semesters
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AdminHistoryScreen(
+                          collegeName: _collegeName ?? '',
+                          department: _department ?? '',
+                          assignedSemesters: _assignedSemesters,
+                        ),
+                      ),
+                    );
+                  },
                   child: const Text("View History"),
                 ),
               ],
@@ -331,29 +366,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
             Row(
               children: [
-                Expanded(
-                  child: _AdminStatCard(
-                    label: 'Accepted',
-                    value: '$_accepted',
-                    icon: Icons.check_circle_outline,
-                  ),
-                ),
+                Expanded(child: _AdminStatCard(label: 'Accepted', value: '$_accepted', icon: Icons.check_circle_outline)),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: _AdminStatCard(
-                    label: 'Pending',
-                    value: '$_pending',
-                    icon: Icons.pending_outlined,
-                  ),
-                ),
+                Expanded(child: _AdminStatCard(label: 'Pending', value: '$_pending', icon: Icons.pending_outlined)),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: _AdminStatCard(
-                    label: 'Rejected',
-                    value: '$_rejected',
-                    icon: Icons.cancel_outlined,
-                  ),
-                ),
+                Expanded(child: _AdminStatCard(label: 'Rejected', value: '$_rejected', icon: Icons.cancel_outlined)),
               ],
             ),
 
@@ -362,12 +379,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  "Other Options",
-                  style: theme.textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                Text("Other Options", style: theme.textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w700)),
                 TextButton(onPressed: () {}, child: const Text("View all")),
               ],
             ),
@@ -376,46 +388,69 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             _AdminOptionTile(
               icon: Icons.person_add_alt,
               title: 'Add new student',
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddStudentScreen(
+                      collegeName: _collegeName,
+                      department: _department,
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 10),
             _AdminOptionTile(
               icon: Icons.remove_red_eye_outlined,
               title: 'View Students',
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ViewStudentsScreen(
+                      collegeName: _collegeName,
+                      department: _department,
+                    ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 10),
             _AdminOptionTile(
               icon: Icons.bar_chart,
               title: 'Report & Analytics',
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ReportsScreen(
+                      collegeName: _collegeName,
+                      department: _department,
+                      assignedSemesters: _assignedSemesters,
+                    ),
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: 18),
 
             Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Quick Summary',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    const Text('Quick Summary', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _smallMetric('Today', '$_today'),
-                        _smallMetric('This Week', '$_thisWeek'),
-                        _smallMetric('This Month', '$_thisMonth'),
-                      ],
-                    ),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      _smallMetric('Today', '$_today'),
+                      _smallMetric('This Week', '$_thisWeek'),
+                      _smallMetric('This Month', '$_thisMonth'),
+                    ]),
                   ],
                 ),
               ),
@@ -429,10 +464,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Widget _smallMetric(String label, String value) {
     return Column(
       children: [
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
@@ -445,11 +477,7 @@ class _AdminStatCard extends StatelessWidget {
   final String label;
   final String value;
 
-  const _AdminStatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _AdminStatCard({required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -458,36 +486,15 @@ class _AdminStatCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Colors.black54, size: 16), // smaller icon
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 12, // smaller font
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.visible, // ✅ allow full text
-                    softWrap: false, // keep one line
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20, // smaller for balance
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, color: Colors.black54, size: 16),
+            const SizedBox(width: 4),
+            Flexible(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+          ]),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+        ]),
       ),
     );
   }
@@ -508,30 +515,15 @@ class _AdminOptionTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-            ),
-          ],
+          boxShadow: [BoxShadow(color: const Color.fromRGBO(0, 0, 0, 0.04), blurRadius: 8)],
         ),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.teal.shade50,
-              child: Icon(icon, color: Colors.teal),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-          ],
-        ),
+        child: Row(children: [
+          CircleAvatar(backgroundColor: Colors.teal.shade50, child: Icon(icon, color: Colors.teal)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+        ]),
       ),
     );
   }
@@ -547,32 +539,20 @@ class _AdminBottomNav extends StatelessWidget {
       onDestinationSelected: (i) {
         switch (i) {
           case 0:
-            Navigator.pushReplacementNamed(context, AdminDashboardScreen.route);
+            Navigator.pushNamedAndRemoveUntil(context, AdminDashboardScreen.route, (r) => false);
             break;
           case 1:
-            Navigator.pushReplacementNamed(context, '/active-requests');
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveRequestsScreen()));
             break;
           case 2:
-            Navigator.pushReplacementNamed(context, '/history');
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminHistoryScreen.blank()));
             break;
         }
       },
       destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.home_outlined),
-          selectedIcon: Icon(Icons.home),
-          label: 'Home',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.request_page),
-          selectedIcon: Icon(Icons.request_page),
-          label: 'Active requests',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.history_outlined),
-          selectedIcon: Icon(Icons.history),
-          label: 'History',
-        ),
+        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+        NavigationDestination(icon: Icon(Icons.request_page), selectedIcon: Icon(Icons.request_page), label: 'Active requests'),
+        NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'History'),
       ],
     );
   }
